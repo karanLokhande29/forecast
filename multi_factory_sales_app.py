@@ -85,12 +85,11 @@ for idx, unit in enumerate(tab_labels):
                 gb.configure_side_bar()
                 AgGrid(merged.round(2), gridOptions=gb.build(), theme='material')
 
-                # ✅ Monthly Summary Section — FIXED
+                # ✅ Monthly Summary Section
                 monthly_summary = combined_df.groupby("Date").agg({
                     "Quantity_Sold": "sum", "Sales_Value": "sum"
                 }).sort_index().reset_index()
 
-                # 🛡 Ensure numeric before pct_change()
                 monthly_summary["Quantity_Sold"] = pd.to_numeric(monthly_summary["Quantity_Sold"], errors="coerce")
                 monthly_summary["Sales_Value"] = pd.to_numeric(monthly_summary["Sales_Value"], errors="coerce")
 
@@ -113,15 +112,20 @@ for idx, unit in enumerate(tab_labels):
                 ax.legend()
                 st.pyplot(fig)
 
-                # 🔮 Forecast Section
+                # 🔮 Forecast Section (Final Fix Applied)
                 st.subheader("🔮 Forecast for All Products (Next Month)")
                 history = combined_df.groupby(["Date", "Product_Name"]).agg({
                     "Quantity_Sold": "sum", "Sales_Value": "sum"
                 }).reset_index()
+
                 history["Date_Ordinal"] = history["Date"].map(datetime.toordinal)
+                history["Quantity_Sold"] = pd.to_numeric(history["Quantity_Sold"], errors="coerce").fillna(0)
+                history["Sales_Value"] = pd.to_numeric(history["Sales_Value"], errors="coerce").fillna(0)
+
                 forecasts = []
                 for prod in sorted(history["Product_Name"].unique()):
                     prod_df = history[history["Product_Name"] == prod]
+
                     if len(prod_df) >= 2:
                         model_qty = LinearRegression().fit(prod_df[["Date_Ordinal"]], prod_df["Quantity_Sold"])
                         model_val = LinearRegression().fit(prod_df[["Date_Ordinal"]], prod_df["Sales_Value"])

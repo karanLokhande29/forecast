@@ -76,17 +76,16 @@ for idx, unit in enumerate(tab_labels):
                 except:
                     st.warning("⚠️ Please select a valid month range.")
 
-                # Monthly Rolling Summary
+                # Monthly Summary Table (Only Rolling Sales)
                 st.subheader("📅 Monthly Sales Summary (6-Month Rolling Avg)")
                 monthly_summary = combined_df.groupby("Date").agg({
-                    "Quantity_Sold": "sum", "Sales_Value": "sum"
+                    "Quantity_Sold": "sum",
+                    "Sales_Value": "sum"
                 }).sort_index().reset_index()
-
                 monthly_summary["Month"] = monthly_summary["Date"].dt.strftime("%B %Y")
-                monthly_summary["Rolling_Quantity_Avg"] = monthly_summary["Quantity_Sold"].rolling(window=6, min_periods=1).mean()
-                monthly_summary["Rolling_Sales_Avg"] = monthly_summary["Sales_Value"].rolling(window=6, min_periods=1).mean()
+                monthly_summary["Rolling_Sales_Avg"] = monthly_summary["Sales_Value"].rolling(6, min_periods=1).mean()
 
-                AgGrid(monthly_summary[["Month", "Quantity_Sold", "Sales_Value", "Rolling_Quantity_Avg", "Rolling_Sales_Avg"]].round(2))
+                AgGrid(monthly_summary[["Month", "Quantity_Sold", "Sales_Value", "Rolling_Sales_Avg"]].round(2))
 
                 # Forecast Section
                 st.subheader("🔮 Forecast for All Products (Next Month)")
@@ -103,7 +102,11 @@ for idx, unit in enumerate(tab_labels):
                             ord_val = target_date.toordinal()
                             qty = model_qty.predict([[ord_val]])[0]
                             val = model_val.predict([[ord_val]])[0]
-                            forecasts.append({"Product_Name": prod, "Forecasted_Quantity": round(qty), "Forecasted_Sales_Value": round(val, 2)})
+                            forecasts.append({
+                                "Product_Name": prod,
+                                "Forecasted_Quantity": round(qty),
+                                "Forecasted_Sales_Value": round(val, 2)
+                            })
                         except:
                             continue
 

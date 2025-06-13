@@ -20,13 +20,37 @@ def process_zip(zip_file):
                 df = pd.read_excel(z.open(name))
                 if {"Product_Name", "Quantity_Sold", "Sales_Value"}.issubset(df.columns):
                     try:
-                        month_year = name.replace(".xlsx", "")
-                        date = pd.to_datetime(month_year, format="%B %Y")
+                        # Extract month-year directly from file name like "April 2024.xlsx"
+                        file_title = name.replace(".xlsx", "").strip()
+                        date = pd.to_datetime(file_title, format="%B %Y")
                         df["Date"] = date
                         dfs[date] = df
                     except:
                         st.warning(f"⚠️ Could not parse date from file: {name}")
         return dfs
+
+def tag_product_activity(df):
+    counts = df.groupby("Product_Name")["Date"].nunique().reset_index()
+    counts.columns = ["Product_Name", "Active_Months"]
+    counts["Activity_Type"] = counts["Active_Months"].apply(
+        lambda x: "Consistent" if x >= 5 else ("Intermittent" if x > 1 else "One-Time"))
+    return counts
+
+def custom_month_summary(df, start_month, end_month):
+    df["Month_dt"] = pd.to_datetime(df["Month"], format="%B %Y")
+    start_dt = pd.to_datetime(start_month, format="%B %Y")
+    end_dt = pd.to_datetime(end_month, format="%B %Y")
+    filtered_df = df[(df["Month_dt"] >= start_dt) & (df["Month_dt"] <= end_dt)]
+
+    summary = filtered_df.groupby("Product_Name").agg({
+        "Quantity_Sold": "sum",
+        "Sales_Value": "sum",
+        "Month": "nunique"
+    }).rename(columns={"Month": "Months_Active"}).reset_index()
+
+    summary["Average_Quantity"] = (summary["Quantity_Sold"] / summary["Months_Active"]).round(2)
+    summary["Average_Sales"] = (summary["Sales_Value"] / summary["Months_Active"]).round(2)
+    return summary
 
 tab_labels = ["Unit 1", "Unit 2", "Unit 3", "Unit 4"]
 tabs = st.tabs(tab_labels)
@@ -44,6 +68,7 @@ for idx, unit in enumerate(tab_labels):
                 month_options = [dt.strftime("%B %Y") for dt in all_dates]
                 selected_month = st.selectbox(f"Select Month - {unit}", month_options, index=len(month_options)-1, key=f"{unit}_month")
                 filtered_data = combined_df[combined_df["Month"] == selected_month]
+
                 product_filter = st.text_input(f"Search Product Name - {unit}", key=f"{unit}_filter")
                 if product_filter:
                     filtered_data = filtered_data[filtered_data["Product_Name"].str.contains(product_filter, case=False)]
@@ -53,54 +78,36 @@ for idx, unit in enumerate(tab_labels):
                 gb_all.configure_pagination()
                 gb_all.configure_default_column(filterable=True, sortable=True, resizable=True)
                 AgGrid(filtered_data, gridOptions=gb_all.build(), theme='material')
-                st.download_button("📤 Download Data", data=filtered_data.to_csv(index=False), file_name=f"{unit}_{selected_month.replace(' ', '_')}.csv")
+                st.download_button("📤 Download Data", data=filtered_data.to_csv(index=False),
+                                   file_name=f"{unit}_{selected_month.replace(' ', '_')}.csv")
 
                 st.markdown(f"### 💰 Total Sales: ₹{filtered_data['Sales_Value'].sum():,.2f}")
 
-                current_df = dfs[all_dates[-1]].copy()
-                prev_df = dfs[all_dates[-2]].copy()
-                current_df = current_df.rename(columns={"Quantity_Sold": "Quantity_Sold_curr", "Sales_Value": "Sales_Value_curr"})
-                prev_df = prev_df.rename(columns={"Quantity_Sold": "Quantity_Sold_prev", "Sales_Value": "Sales_Value_prev"})
-                merged = pd.merge(
-                    current_df[["Product_Name", "Quantity_Sold_curr", "Sales_Value_curr"]],
-                    prev_df[["Product_Name", "Quantity_Sold_prev", "Sales_Value_prev"]],
-                    on="Product_Name", how="outer"
-                ).fillna(0)
+                st.markdown("### 📌 Custom Range Summary")
+                start_m = st.selectbox(f"From Month - {unit}", month_options, key=f"{unit}_start")
+                end_m = st.selectbox(f"To Month - {unit}", month_options, index=len(month_options)-1, key=f"{unit}_end")
+                if month_options.index(start_m) <= month_options.index(end_m):
+                    summary = custom_month_summary(combined_df, start_m, end_m)
+                    AgGrid(summary)
+                else:
+                    st.warning("⚠️ Start month must be before end month.")
 
-                for col in ["Quantity_Sold_curr", "Quantity_Sold_prev", "Sales_Value_curr", "Sales_Value_prev"]:
-                    merged[col] = pd.to_numeric(merged[col], errors="coerce")
-
-                merged["Growth_Quantity_%"] = ((merged["Quantity_Sold_curr"] - merged["Quantity_Sold_prev"]) /
-                                                merged["Quantity_Sold_prev"].replace(0, np.nan)) * 100
-                merged["Growth_Value_%"] = ((merged["Sales_Value_curr"] - merged["Sales_Value_prev"]) /
-                                             merged["Sales_Value_prev"].replace(0, np.nan)) * 100
-
-                def label_growth(g): return "📈 Spike" if g > 10 else ("📉 Drop" if g < -10 else "✅ Stable")
-                merged["Alert"] = merged["Growth_Quantity_%"].apply(label_growth)
-
-                st.subheader(f"📊 Comparison: {all_dates[-2].strftime('%B %Y')} ➡ {all_dates[-1].strftime('%B %Y')}")
-                gb = GridOptionsBuilder.from_dataframe(merged)
-                gb.configure_pagination()
-                gb.configure_default_column(filterable=True, sortable=True, resizable=True)
-                gb.configure_side_bar()
-                AgGrid(merged.round(2), gridOptions=gb.build(), theme='material')
-
-                # Monthly Summary
+                # Monthly Summary with Rolling Averages
                 monthly_summary = combined_df.groupby("Date").agg({
                     "Quantity_Sold": "sum", "Sales_Value": "sum"
                 }).sort_index().reset_index()
-
-                monthly_summary["Quantity_Sold"] = pd.to_numeric(monthly_summary["Quantity_Sold"], errors="coerce")
-                monthly_summary["Sales_Value"] = pd.to_numeric(monthly_summary["Sales_Value"], errors="coerce")
-
                 monthly_summary["Month"] = monthly_summary["Date"].dt.strftime("%B %Y")
-                monthly_summary["MoM_Growth_Quantity_%"] = monthly_summary["Quantity_Sold"].pct_change() * 100
-                monthly_summary["MoM_Growth_Sales_Value_%"] = monthly_summary["Sales_Value"].pct_change() * 100
-                monthly_summary = monthly_summary[["Month", "Quantity_Sold", "Sales_Value", "MoM_Growth_Quantity_%", "MoM_Growth_Sales_Value_%"]]
-                st.subheader("📅 Monthly Sales Summary")
-                AgGrid(monthly_summary.round(2))
+                monthly_summary["Rolling_Avg_Quantity"] = monthly_summary["Quantity_Sold"].rolling(window=3, min_periods=1).mean()
+                monthly_summary["Rolling_Avg_Sales"] = monthly_summary["Sales_Value"].rolling(window=3, min_periods=1).mean()
+                st.subheader("📅 Monthly Sales Summary (with Rolling Averages)")
+                AgGrid(monthly_summary[["Month", "Quantity_Sold", "Sales_Value", "Rolling_Avg_Quantity", "Rolling_Avg_Sales"]].round(2))
 
-                # Graphs
+                # Product Activity Type (One-Time, Intermittent, Consistent)
+                st.subheader("📌 Product Activity Classification")
+                activity_df = tag_product_activity(combined_df)
+                AgGrid(activity_df)
+
+                # Product-wise Trends
                 st.markdown("---")
                 st.subheader("📊 Product-wise Trendline")
                 selected_prod = st.selectbox("Choose Product", sorted(combined_df["Product_Name"].unique()), key=f"{unit}_trend")
@@ -111,37 +118,3 @@ for idx, unit in enumerate(tab_labels):
                 ax.set_title(f"Trendline: {selected_prod}")
                 ax.legend()
                 st.pyplot(fig)
-
-                # 🔮 Forecast – All Products Included
-                st.subheader("🔮 Forecast for All Products (Next Month)")
-                history = combined_df.groupby(["Date", "Product_Name"]).agg({
-                    "Quantity_Sold": "sum",
-                    "Sales_Value": "sum"
-                }).reset_index()
-
-                history["Date_Ordinal"] = history["Date"].map(datetime.toordinal)
-                history["Quantity_Sold"] = pd.to_numeric(history["Quantity_Sold"], errors="coerce").fillna(0)
-                history["Sales_Value"] = pd.to_numeric(history["Sales_Value"], errors="coerce").fillna(0)
-
-                forecasts = []
-                for prod in sorted(history["Product_Name"].unique()):
-                    prod_df = history[history["Product_Name"] == prod].sort_values("Date")
-                    if len(prod_df) >= 2:
-                        model_qty = LinearRegression().fit(prod_df[["Date_Ordinal"]], prod_df["Quantity_Sold"])
-                        model_val = LinearRegression().fit(prod_df[["Date_Ordinal"]], prod_df["Sales_Value"])
-                        target_date = prod_df["Date"].max() + pd.DateOffset(months=1)
-                        ord_val = target_date.toordinal()
-                        qty = model_qty.predict([[ord_val]])[0]
-                        val = model_val.predict([[ord_val]])[0]
-                    else:
-                        qty = prod_df["Quantity_Sold"].iloc[-1]
-                        val = prod_df["Sales_Value"].iloc[-1]
-                    forecasts.append({
-                        "Product_Name": prod,
-                        "Forecasted_Quantity": round(qty),
-                        "Forecasted_Sales_Value": round(val, 2)
-                    })
-
-                forecast_df = pd.DataFrame(forecasts)
-                AgGrid(forecast_df)
-                st.markdown(f"### 💡 Total Forecasted Sales: ₹{forecast_df['Forecasted_Sales_Value'].sum():,.2f}")

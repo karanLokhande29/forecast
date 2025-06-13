@@ -20,12 +20,12 @@ def process_zip(zip_file):
                 df = pd.read_excel(z.open(name))
                 if {"Product_Name", "Quantity_Sold", "Sales_Value"}.issubset(df.columns):
                     try:
-                        parts = name.replace(".xlsx", "").split("_")
-                        month_year = parts[-2] + " " + parts[-1]
+                        # ✅ Fix: directly use the filename as "Month Year"
+                        month_year = name.replace(".xlsx", "")
                         date = pd.to_datetime(month_year, format="%B %Y")
                         df["Date"] = date
                         dfs[date] = df
-                    except:
+                    except Exception as e:
                         st.warning(f"⚠️ Could not parse date from file: {name}")
         return dfs
 
@@ -68,7 +68,7 @@ for idx, unit in enumerate(tab_labels):
                     on="Product_Name", how="outer"
                 ).fillna(0)
 
-                # ✅ Fix: Ensure numeric before doing arithmetic
+                # ✅ Fix: Ensure numeric types
                 for col in ["Quantity_Sold_curr", "Quantity_Sold_prev", "Sales_Value_curr", "Sales_Value_prev"]:
                     merged[col] = pd.to_numeric(merged[col], errors="coerce")
 

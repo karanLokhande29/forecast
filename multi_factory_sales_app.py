@@ -10,7 +10,7 @@ import warnings
 
 warnings.filterwarnings("ignore")
 st.set_page_config(page_title="📊 Multi-Unit Sales Dashboard", layout="wide")
-st.title("🏭 Multi-Unit Sales Dashboard")
+st.title("🏠 Multi-Unit Sales Dashboard")
 
 def process_zip(zip_file):
     with zipfile.ZipFile(zip_file) as z:
@@ -18,12 +18,13 @@ def process_zip(zip_file):
         for name in z.namelist():
             if name.endswith(".xlsx"):
                 df = pd.read_excel(z.open(name))
-                if {"Product_Name", "Quantity_Sold", "Sales_Value"}.issubset(df.columns):
+                if {"Item Name", "Quantity", "Value"}.issubset(df.columns):
                     try:
                         parts = name.replace(".xlsx", "").split("_")
                         month_year = parts[-2] + " " + parts[-1]
                         date = pd.to_datetime(month_year, format="%B %Y")
                         df["Date"] = date
+                        df = df.rename(columns={"Item Name": "Product_Name", "Quantity": "Quantity_Sold", "Value": "Sales_Value"})
                         dfs[date] = df
                     except:
                         st.warning(f"⚠️ Could not parse date from file: {name}")
@@ -54,34 +55,9 @@ for idx, unit in enumerate(tab_labels):
                 gb_all.configure_pagination()
                 gb_all.configure_default_column(filterable=True, sortable=True, resizable=True)
                 AgGrid(filtered_data, gridOptions=gb_all.build(), theme='material')
-                st.download_button("📤 Download Data", data=filtered_data.to_csv(index=False), file_name=f"{unit}_{selected_month.replace(' ', '_')}.csv")
+                st.download_button("📄 Download Data", data=filtered_data.to_csv(index=False), file_name=f"{unit}_{selected_month.replace(' ', '_')}.csv")
 
                 st.markdown(f"### 💰 Total Sales: ₹{filtered_data['Sales_Value'].sum():,.2f}")
-
-                current_df = dfs[all_dates[-1]].copy()
-                prev_df = dfs[all_dates[-2]].copy()
-                current_df = current_df.rename(columns={"Quantity_Sold": "Quantity_Sold_curr", "Sales_Value": "Sales_Value_curr"})
-                prev_df = prev_df.rename(columns={"Quantity_Sold": "Quantity_Sold_prev", "Sales_Value": "Sales_Value_prev"})
-                merged = pd.merge(
-                    current_df[["Product_Name", "Quantity_Sold_curr", "Sales_Value_curr"]],
-                    prev_df[["Product_Name", "Quantity_Sold_prev", "Sales_Value_prev"]],
-                    on="Product_Name", how="outer"
-                ).fillna(0)
-
-                merged["Growth_Quantity_%"] = ((merged["Quantity_Sold_curr"] - merged["Quantity_Sold_prev"]) /
-                                                merged["Quantity_Sold_prev"].replace(0, np.nan)) * 100
-                merged["Growth_Value_%"] = ((merged["Sales_Value_curr"] - merged["Sales_Value_prev"]) /
-                                             merged["Sales_Value_prev"].replace(0, np.nan)) * 100
-
-                def label_growth(g): return "📈 Spike" if g > 10 else ("📉 Drop" if g < -10 else "✅ Stable")
-                merged["Alert"] = merged["Growth_Quantity_%"].apply(label_growth)
-
-                st.subheader(f"📊 Comparison: {all_dates[-2].strftime('%B %Y')} ➡ {all_dates[-1].strftime('%B %Y')}")
-                gb = GridOptionsBuilder.from_dataframe(merged)
-                gb.configure_pagination()
-                gb.configure_default_column(filterable=True, sortable=True, resizable=True)
-                gb.configure_side_bar()
-                AgGrid(merged, gridOptions=gb.build(), theme='material')
 
                 # Monthly Summary Table
                 monthly_summary = combined_df.groupby("Date").agg({

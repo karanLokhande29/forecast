@@ -23,6 +23,8 @@ def process_zip(zip_file):
                         month_year = name.replace(".xlsx", "")
                         date = pd.to_datetime(month_year, format="%B %Y")
                         df["Date"] = date
+                        df["Quantity_Sold"] = pd.to_numeric(df["Quantity_Sold"], errors="coerce").fillna(0)
+                        df["Sales_Value"] = pd.to_numeric(df["Sales_Value"], errors="coerce").fillna(0)
                         dfs[date] = df
                     except:
                         st.warning(f"⚠️ Could not parse date from file: {name}")
@@ -66,6 +68,12 @@ for idx, unit in enumerate(tab_labels):
                     prev_df[["Product_Name", "Quantity_Sold_prev", "Sales_Value_prev"]],
                     on="Product_Name", how="outer"
                 ).fillna(0)
+
+                # Ensure numeric types
+                merged["Quantity_Sold_curr"] = pd.to_numeric(merged["Quantity_Sold_curr"], errors="coerce").fillna(0)
+                merged["Quantity_Sold_prev"] = pd.to_numeric(merged["Quantity_Sold_prev"], errors="coerce").fillna(0)
+                merged["Sales_Value_curr"] = pd.to_numeric(merged["Sales_Value_curr"], errors="coerce").fillna(0)
+                merged["Sales_Value_prev"] = pd.to_numeric(merged["Sales_Value_prev"], errors="coerce").fillna(0)
 
                 merged["Growth_Quantity_%"] = ((merged["Quantity_Sold_curr"] - merged["Quantity_Sold_prev"]) /
                                                 merged["Quantity_Sold_prev"].replace(0, np.nan)) * 100

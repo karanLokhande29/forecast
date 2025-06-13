@@ -85,7 +85,7 @@ for idx, unit in enumerate(tab_labels):
                 gb.configure_side_bar()
                 AgGrid(merged.round(2), gridOptions=gb.build(), theme='material')
 
-                # ✅ Monthly Summary Section
+                # Monthly Summary
                 monthly_summary = combined_df.groupby("Date").agg({
                     "Quantity_Sold": "sum", "Sales_Value": "sum"
                 }).sort_index().reset_index()
@@ -100,7 +100,7 @@ for idx, unit in enumerate(tab_labels):
                 st.subheader("📅 Monthly Sales Summary")
                 AgGrid(monthly_summary.round(2))
 
-                # 🔻 Graph Section
+                # Graphs
                 st.markdown("---")
                 st.subheader("📊 Product-wise Trendline")
                 selected_prod = st.selectbox("Choose Product", sorted(combined_df["Product_Name"].unique()), key=f"{unit}_trend")
@@ -112,10 +112,11 @@ for idx, unit in enumerate(tab_labels):
                 ax.legend()
                 st.pyplot(fig)
 
-                # 🔮 Forecast Section (Final Fix Applied)
+                # 🔮 Forecast – All Products Included
                 st.subheader("🔮 Forecast for All Products (Next Month)")
                 history = combined_df.groupby(["Date", "Product_Name"]).agg({
-                    "Quantity_Sold": "sum", "Sales_Value": "sum"
+                    "Quantity_Sold": "sum",
+                    "Sales_Value": "sum"
                 }).reset_index()
 
                 history["Date_Ordinal"] = history["Date"].map(datetime.toordinal)
@@ -124,8 +125,7 @@ for idx, unit in enumerate(tab_labels):
 
                 forecasts = []
                 for prod in sorted(history["Product_Name"].unique()):
-                    prod_df = history[history["Product_Name"] == prod]
-
+                    prod_df = history[history["Product_Name"] == prod].sort_values("Date")
                     if len(prod_df) >= 2:
                         model_qty = LinearRegression().fit(prod_df[["Date_Ordinal"]], prod_df["Quantity_Sold"])
                         model_val = LinearRegression().fit(prod_df[["Date_Ordinal"]], prod_df["Sales_Value"])
@@ -133,11 +133,14 @@ for idx, unit in enumerate(tab_labels):
                         ord_val = target_date.toordinal()
                         qty = model_qty.predict([[ord_val]])[0]
                         val = model_val.predict([[ord_val]])[0]
-                        forecasts.append({
-                            "Product_Name": prod,
-                            "Forecasted_Quantity": round(qty),
-                            "Forecasted_Sales_Value": round(val, 2)
-                        })
+                    else:
+                        qty = prod_df["Quantity_Sold"].iloc[-1]
+                        val = prod_df["Sales_Value"].iloc[-1]
+                    forecasts.append({
+                        "Product_Name": prod,
+                        "Forecasted_Quantity": round(qty),
+                        "Forecasted_Sales_Value": round(val, 2)
+                    })
 
                 forecast_df = pd.DataFrame(forecasts)
                 AgGrid(forecast_df)

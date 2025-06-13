@@ -68,6 +68,10 @@ for idx, unit in enumerate(tab_labels):
                     on="Product_Name", how="outer"
                 ).fillna(0)
 
+                # ✅ Fix: Ensure numeric before doing arithmetic
+                for col in ["Quantity_Sold_curr", "Quantity_Sold_prev", "Sales_Value_curr", "Sales_Value_prev"]:
+                    merged[col] = pd.to_numeric(merged[col], errors="coerce")
+
                 merged["Growth_Quantity_%"] = ((merged["Quantity_Sold_curr"] - merged["Quantity_Sold_prev"]) /
                                                 merged["Quantity_Sold_prev"].replace(0, np.nan)) * 100
                 merged["Growth_Value_%"] = ((merged["Sales_Value_curr"] - merged["Sales_Value_prev"]) /

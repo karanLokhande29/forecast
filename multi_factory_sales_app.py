@@ -57,7 +57,7 @@ for idx, unit in enumerate(tab_labels):
 
                 st.markdown(f"### 💰 Total Sales: ₹{filtered_data['Sales_Value'].sum():,.2f}")
 
-                # Comparison Table
+                # Product-wise Comparison
                 current_df = dfs[all_dates[-1]].copy()
                 prev_df = dfs[all_dates[-2]].copy()
                 current_df = current_df.rename(columns={"Quantity_Sold": "Quantity_Sold_curr", "Sales_Value": "Sales_Value_curr"})
@@ -67,6 +67,10 @@ for idx, unit in enumerate(tab_labels):
                     prev_df[["Product_Name", "Quantity_Sold_prev", "Sales_Value_prev"]],
                     on="Product_Name", how="outer"
                 ).fillna(0)
+
+                # ✅ Ensure columns are numeric before computing growth
+                for col in ["Quantity_Sold_curr", "Quantity_Sold_prev", "Sales_Value_curr", "Sales_Value_prev"]:
+                    merged[col] = pd.to_numeric(merged[col], errors="coerce")
 
                 merged["Growth_Quantity_%"] = ((merged["Quantity_Sold_curr"] - merged["Quantity_Sold_prev"]) /
                                                 merged["Quantity_Sold_prev"].replace(0, np.nan)) * 100
@@ -81,7 +85,7 @@ for idx, unit in enumerate(tab_labels):
                 gb.configure_pagination()
                 gb.configure_default_column(filterable=True, sortable=True, resizable=True)
                 gb.configure_side_bar()
-                AgGrid(merged, gridOptions=gb.build(), theme='material')
+                AgGrid(merged.round(2), gridOptions=gb.build(), theme='material')
 
                 # Monthly Summary Table
                 monthly_summary = combined_df.groupby("Date").agg({
@@ -110,6 +114,7 @@ for idx, unit in enumerate(tab_labels):
                 ax.legend()
                 st.pyplot(fig)
 
+                # Forecast Section
                 st.subheader("🔮 Forecast for All Products (Next Month)")
                 history = combined_df.groupby(["Date", "Product_Name"]).agg({"Quantity_Sold": "sum", "Sales_Value": "sum"}).reset_index()
                 history["Date_Ordinal"] = history["Date"].map(datetime.toordinal)
@@ -123,7 +128,11 @@ for idx, unit in enumerate(tab_labels):
                         ord_val = target_date.toordinal()
                         qty = model_qty.predict([[ord_val]])[0]
                         val = model_val.predict([[ord_val]])[0]
-                        forecasts.append({"Product_Name": prod, "Forecasted_Quantity": round(qty), "Forecasted_Sales_Value": round(val, 2)})
+                        forecasts.append({
+                            "Product_Name": prod,
+                            "Forecasted_Quantity": round(qty),
+                            "Forecasted_Sales_Value": round(val, 2)
+                        })
 
                 forecast_df = pd.DataFrame(forecasts)
                 AgGrid(forecast_df)

@@ -20,8 +20,7 @@ def process_zip(zip_file):
                 df = pd.read_excel(z.open(name))
                 if {"Product_Name", "Quantity_Sold", "Sales_Value"}.issubset(df.columns):
                     try:
-                        parts = name.replace(".xlsx", "").split("_")
-                        month_year = parts[-2] + " " + parts[-1]
+                        month_year = name.replace(".xlsx", "")
                         date = pd.to_datetime(month_year, format="%B %Y")
                         df["Date"] = date
                         dfs[date] = df
@@ -58,6 +57,7 @@ for idx, unit in enumerate(tab_labels):
 
                 st.markdown(f"### 💰 Total Sales: ₹{filtered_data['Sales_Value'].sum():,.2f}")
 
+                # Comparison Table
                 current_df = dfs[all_dates[-1]].copy()
                 prev_df = dfs[all_dates[-2]].copy()
                 current_df = current_df.rename(columns={"Quantity_Sold": "Quantity_Sold_curr", "Sales_Value": "Sales_Value_curr"})
@@ -87,6 +87,10 @@ for idx, unit in enumerate(tab_labels):
                 monthly_summary = combined_df.groupby("Date").agg({
                     "Quantity_Sold": "sum", "Sales_Value": "sum"
                 }).sort_index().reset_index()
+
+                monthly_summary["Quantity_Sold"] = pd.to_numeric(monthly_summary["Quantity_Sold"], errors="coerce")
+                monthly_summary["Sales_Value"] = pd.to_numeric(monthly_summary["Sales_Value"], errors="coerce")
+
                 monthly_summary["Month"] = monthly_summary["Date"].dt.strftime("%B %Y")
                 monthly_summary["MoM_Growth_Quantity_%"] = monthly_summary["Quantity_Sold"].pct_change() * 100
                 monthly_summary["MoM_Growth_Sales_Value_%"] = monthly_summary["Sales_Value"].pct_change() * 100

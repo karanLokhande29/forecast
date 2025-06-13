@@ -20,7 +20,6 @@ def process_zip(zip_file):
                 df = pd.read_excel(z.open(name))
                 if {"Item Name", "Quantity", "Value"}.issubset(df.columns):
                     try:
-                        # Handle filename like "April 2024.xlsx"
                         month_year = name.replace(".xlsx", "")
                         date = pd.to_datetime(month_year, format="%B %Y")
                         df["Date"] = date
@@ -67,10 +66,16 @@ for idx, unit in enumerate(tab_labels):
                 monthly_summary = combined_df.groupby("Date").agg({
                     "Quantity_Sold": "sum", "Sales_Value": "sum"
                 }).sort_index().reset_index()
+
+                # Ensure numeric values for safe % calculations
+                monthly_summary["Quantity_Sold"] = pd.to_numeric(monthly_summary["Quantity_Sold"], errors='coerce')
+                monthly_summary["Sales_Value"] = pd.to_numeric(monthly_summary["Sales_Value"], errors='coerce')
+
                 monthly_summary["Month"] = monthly_summary["Date"].dt.strftime("%B %Y")
                 monthly_summary["MoM_Growth_Quantity_%"] = monthly_summary["Quantity_Sold"].pct_change() * 100
                 monthly_summary["MoM_Growth_Sales_Value_%"] = monthly_summary["Sales_Value"].pct_change() * 100
                 monthly_summary = monthly_summary[["Month", "Quantity_Sold", "Sales_Value", "MoM_Growth_Quantity_%", "MoM_Growth_Sales_Value_%"]]
+                
                 st.subheader("📅 Monthly Sales Summary")
                 AgGrid(monthly_summary.round(2))
 
@@ -87,7 +92,11 @@ for idx, unit in enumerate(tab_labels):
                 st.pyplot(fig)
 
                 st.subheader("🔮 Forecast for All Products (Next Month)")
-                history = combined_df.groupby(["Date", "Product_Name"]).agg({"Quantity_Sold": "sum", "Sales_Value": "sum"}).reset_index()
+                history = combined_df.groupby(["Date", "Product_Name"]).agg({
+                    "Quantity_Sold": "sum",
+                    "Sales_Value": "sum"
+                }).reset_index()
+
                 history["Date_Ordinal"] = history["Date"].map(datetime.toordinal)
                 forecasts = []
                 for prod in sorted(history["Product_Name"].unique()):

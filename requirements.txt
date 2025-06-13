@@ -2,6 +2,6 @@ streamlit
 pandas
 numpy
 matplotlib
-scikit-learn
+streamlit-aggrid
 openpyxl
-st_aggrid
+scikit-learn

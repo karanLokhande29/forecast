@@ -20,11 +20,15 @@ def process_zip(zip_file):
                 df = pd.read_excel(z.open(name))
                 if {"Item Name", "Quantity", "Value"}.issubset(df.columns):
                     try:
-                        parts = name.replace(".xlsx", "").split("_")
-                        month_year = parts[-2] + " " + parts[-1]
+                        # Handle filename like "April 2024.xlsx"
+                        month_year = name.replace(".xlsx", "")
                         date = pd.to_datetime(month_year, format="%B %Y")
                         df["Date"] = date
-                        df = df.rename(columns={"Item Name": "Product_Name", "Quantity": "Quantity_Sold", "Value": "Sales_Value"})
+                        df = df.rename(columns={
+                            "Item Name": "Product_Name",
+                            "Quantity": "Quantity_Sold",
+                            "Value": "Sales_Value"
+                        })
                         dfs[date] = df
                     except:
                         st.warning(f"⚠️ Could not parse date from file: {name}")
@@ -95,7 +99,11 @@ for idx, unit in enumerate(tab_labels):
                         ord_val = target_date.toordinal()
                         qty = model_qty.predict([[ord_val]])[0]
                         val = model_val.predict([[ord_val]])[0]
-                        forecasts.append({"Product_Name": prod, "Forecasted_Quantity": round(qty), "Forecasted_Sales_Value": round(val, 2)})
+                        forecasts.append({
+                            "Product_Name": prod,
+                            "Forecasted_Quantity": round(qty),
+                            "Forecasted_Sales_Value": round(val, 2)
+                        })
 
                 forecast_df = pd.DataFrame(forecasts)
                 AgGrid(forecast_df)

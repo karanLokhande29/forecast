@@ -20,7 +20,6 @@ def process_zip(zip_file):
                 df = pd.read_excel(z.open(name))
                 if {"Product_Name", "Quantity_Sold", "Sales_Value"}.issubset(df.columns):
                     try:
-                        # Extract month-year directly from file name like "April 2024.xlsx"
                         file_title = name.replace(".xlsx", "").strip()
                         date = pd.to_datetime(file_title, format="%B %Y")
                         df["Date"] = date
@@ -28,13 +27,6 @@ def process_zip(zip_file):
                     except:
                         st.warning(f"⚠️ Could not parse date from file: {name}")
         return dfs
-
-def tag_product_activity(df):
-    counts = df.groupby("Product_Name")["Date"].nunique().reset_index()
-    counts.columns = ["Product_Name", "Active_Months"]
-    counts["Activity_Type"] = counts["Active_Months"].apply(
-        lambda x: "Consistent" if x >= 5 else ("Intermittent" if x > 1 else "One-Time"))
-    return counts
 
 def custom_month_summary(df, start_month, end_month):
     df["Month_dt"] = pd.to_datetime(df["Month"], format="%B %Y")
@@ -51,6 +43,13 @@ def custom_month_summary(df, start_month, end_month):
     summary["Average_Quantity"] = (summary["Quantity_Sold"] / summary["Months_Active"]).round(2)
     summary["Average_Sales"] = (summary["Sales_Value"] / summary["Months_Active"]).round(2)
     return summary
+
+def tag_product_activity(df):
+    activity = df.groupby("Product_Name")["Date"].nunique().reset_index()
+    activity.columns = ["Product_Name", "Active_Months"]
+    activity["Activity_Type"] = activity["Active_Months"].apply(
+        lambda x: "Consistent" if x >= 5 else ("Intermittent" if x > 1 else "One-Time"))
+    return activity
 
 tab_labels = ["Unit 1", "Unit 2", "Unit 3", "Unit 4"]
 tabs = st.tabs(tab_labels)
@@ -83,31 +82,32 @@ for idx, unit in enumerate(tab_labels):
 
                 st.markdown(f"### 💰 Total Sales: ₹{filtered_data['Sales_Value'].sum():,.2f}")
 
-                st.markdown("### 📌 Custom Range Summary")
-                start_m = st.selectbox(f"From Month - {unit}", month_options, key=f"{unit}_start")
-                end_m = st.selectbox(f"To Month - {unit}", month_options, index=len(month_options)-1, key=f"{unit}_end")
+                st.subheader("📅 Monthly Sales Summary (Rolling Avg)")
+                monthly_summary = combined_df.groupby("Date").agg({
+                    "Quantity_Sold": "sum", "Sales_Value": "sum"
+                }).sort_index().reset_index()
+                monthly_summary["Month"] = monthly_summary["Date"].dt.strftime("%B %Y")
+                monthly_summary["Rolling_Quantity_Avg"] = monthly_summary["Quantity_Sold"].rolling(3, min_periods=1).mean()
+                monthly_summary["Rolling_Sales_Avg"] = monthly_summary["Sales_Value"].rolling(3, min_periods=1).mean()
+                AgGrid(monthly_summary[["Month", "Quantity_Sold", "Sales_Value", "Rolling_Quantity_Avg", "Rolling_Sales_Avg"]].round(2))
+
+                st.subheader("📌 Product Activity Classification")
+                activity_df = tag_product_activity(combined_df)
+                AgGrid(activity_df)
+
+                st.subheader("📆 Product Summary for Selected Month Range")
+                col1, col2 = st.columns(2)
+                with col1:
+                    start_m = st.selectbox(f"From Month - {unit}", month_options, key=f"{unit}_start")
+                with col2:
+                    end_m = st.selectbox(f"To Month - {unit}", month_options, index=len(month_options)-1, key=f"{unit}_end")
+
                 if month_options.index(start_m) <= month_options.index(end_m):
                     summary = custom_month_summary(combined_df, start_m, end_m)
                     AgGrid(summary)
                 else:
                     st.warning("⚠️ Start month must be before end month.")
 
-                # Monthly Summary with Rolling Averages
-                monthly_summary = combined_df.groupby("Date").agg({
-                    "Quantity_Sold": "sum", "Sales_Value": "sum"
-                }).sort_index().reset_index()
-                monthly_summary["Month"] = monthly_summary["Date"].dt.strftime("%B %Y")
-                monthly_summary["Rolling_Avg_Quantity"] = monthly_summary["Quantity_Sold"].rolling(window=3, min_periods=1).mean()
-                monthly_summary["Rolling_Avg_Sales"] = monthly_summary["Sales_Value"].rolling(window=3, min_periods=1).mean()
-                st.subheader("📅 Monthly Sales Summary (with Rolling Averages)")
-                AgGrid(monthly_summary[["Month", "Quantity_Sold", "Sales_Value", "Rolling_Avg_Quantity", "Rolling_Avg_Sales"]].round(2))
-
-                # Product Activity Type (One-Time, Intermittent, Consistent)
-                st.subheader("📌 Product Activity Classification")
-                activity_df = tag_product_activity(combined_df)
-                AgGrid(activity_df)
-
-                # Product-wise Trends
                 st.markdown("---")
                 st.subheader("📊 Product-wise Trendline")
                 selected_prod = st.selectbox("Choose Product", sorted(combined_df["Product_Name"].unique()), key=f"{unit}_trend")

@@ -1,7 +1,6 @@
 import streamlit as st
 import pandas as pd
 import numpy as np
-import matplotlib.pyplot as plt
 from sklearn.linear_model import LinearRegression
 from st_aggrid import AgGrid, GridOptionsBuilder
 from datetime import datetime
@@ -13,8 +12,8 @@ st.set_page_config(page_title="📊 Multi-Unit Sales Dashboard", layout="wide")
 st.title("🏭 Multi-Unit Sales Dashboard")
 
 def process_zip(zip_file):
+    dfs = {}
     with zipfile.ZipFile(zip_file) as z:
-        dfs = {}
         for name in z.namelist():
             if name.endswith(".xlsx"):
                 df = pd.read_excel(z.open(name))
@@ -30,7 +29,7 @@ def process_zip(zip_file):
                         dfs[date] = df
                     except:
                         st.warning(f"⚠️ Could not parse date from file: {name}")
-        return dfs
+    return dfs
 
 tab_labels = ["Unit 1", "Unit 2", "Unit 3", "Unit 4"]
 tabs = st.tabs(tab_labels)
@@ -61,43 +60,26 @@ for idx, unit in enumerate(tab_labels):
 
                 st.markdown(f"### 💰 Total Sales: ₹{filtered_data['Sales_Value'].sum():,.2f}")
 
-                # 📆 Custom Month Range Summary
-                st.subheader("📆 Select Custom Month Range")
-                start_month = st.selectbox(f"From Month - {unit}", month_options, index=0, key=f"{unit}_start")
-                end_month = st.selectbox(f"To Month - {unit}", month_options, index=len(month_options)-1, key=f"{unit}_end")
-                try:
-                    start_date = pd.to_datetime(start_month)
-                    end_date = pd.to_datetime(end_month)
-                    range_df = combined_df[(combined_df["Date"] >= start_date) & (combined_df["Date"] <= end_date)]
-                    total_qty = range_df["Quantity_Sold"].sum()
-                    total_val = range_df["Sales_Value"].sum()
-                    st.success(f"📦 From {start_month} to {end_month}:\n\n🧮 Total Quantity: {total_qty:,.0f}\n💸 Total Sales: ₹{total_val:,.2f}")
-                except:
-                    st.warning("⚠️ Please select a valid month range.")
+                # 📅 Product-wise 6-Month Rolling Sales Avg (Fixed)
+                st.subheader("📅 Product-wise 6-Month Rolling Sales Avg (Fixed)")
 
-                # 📅 Monthly Summary Table (6-month rolling)
-                st.subheader("📅 Monthly Sales Summary (6-Month Rolling Avg)")
-                monthly_summary = combined_df.groupby("Date").agg({
-                    "Quantity_Sold": "sum",
-                    "Sales_Value": "sum"
-                }).sort_index().reset_index()
-                monthly_summary["Month"] = monthly_summary["Date"].dt.strftime("%B %Y")
-                monthly_summary["Rolling_Sales_Avg"] = monthly_summary["Sales_Value"].rolling(6, min_periods=1).mean()
-                AgGrid(monthly_summary[["Month", "Quantity_Sold", "Sales_Value", "Rolling_Sales_Avg"]].round(2))
+                all_months = pd.date_range(start=combined_df["Date"].min(), end=combined_df["Date"].max(), freq="MS")
+                all_products = combined_df["Product_Name"].unique()
+                full_index = pd.MultiIndex.from_product([all_products, all_months], names=["Product_Name", "Date"])
 
-                # 📅 Product-wise Rolling Sales Avg
-                st.subheader("📅 Product-wise 6-Month Rolling Sales Avg")
-                product_roll = combined_df.groupby(["Product_Name", "Date"]).agg({"Sales_Value": "sum"}).reset_index()
-                product_roll = product_roll.sort_values(by=["Product_Name", "Date"])
-                product_roll["Rolling_Sales_Avg"] = product_roll.groupby("Product_Name")["Sales_Value"].transform(
-                    lambda x: x.rolling(6, min_periods=1).mean()
+                # Reindex to include missing months with 0 sales
+                roll_base = combined_df.groupby(["Product_Name", "Date"]).agg({"Sales_Value": "sum"}).reindex(full_index, fill_value=0).reset_index()
+                roll_base = roll_base.sort_values(by=["Product_Name", "Date"])
+
+                # Rolling average per product
+                roll_base["Rolling_Sales_Avg"] = roll_base.groupby("Product_Name")["Sales_Value"].transform(
+                    lambda x: x.rolling(window=6, min_periods=1).mean()
                 )
-                product_roll["Month"] = pd.to_datetime(product_roll["Date"]).dt.strftime("%Y-%m")
-                product_roll = product_roll.sort_values(by=["Product_Name", "Month"])
-                product_roll["Month"] = pd.to_datetime(product_roll["Month"]).dt.strftime("%B %Y")
-                AgGrid(product_roll[["Product_Name", "Month", "Sales_Value", "Rolling_Sales_Avg"]].round(2))
 
-                # 🔮 Forecast Section
+                roll_base["Month"] = roll_base["Date"].dt.strftime("%B %Y")
+                AgGrid(roll_base[["Product_Name", "Month", "Sales_Value", "Rolling_Sales_Avg"]].round(2))
+
+                # 🔮 Forecast (Unchanged)
                 st.subheader("🔮 Forecast for All Products (Next Month)")
                 history = combined_df.groupby(["Date", "Product_Name"]).agg({
                     "Quantity_Sold": "sum", "Sales_Value": "sum"

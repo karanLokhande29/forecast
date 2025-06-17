@@ -60,26 +60,24 @@ for idx, unit in enumerate(tab_labels):
 
                 st.markdown(f"### 💰 Total Sales: ₹{filtered_data['Sales_Value'].sum():,.2f}")
 
-                # 📅 Product-wise 6-Month Rolling Sales Avg (Fixed)
+                # ✅ Product-wise 6-Month Rolling Sales Avg (Only latest value per product)
                 st.subheader("📅 Product-wise 6-Month Rolling Sales Avg (Fixed)")
-
                 all_months = pd.date_range(start=combined_df["Date"].min(), end=combined_df["Date"].max(), freq="MS")
                 all_products = combined_df["Product_Name"].unique()
                 full_index = pd.MultiIndex.from_product([all_products, all_months], names=["Product_Name", "Date"])
 
-                # Reindex to include missing months with 0 sales
                 roll_base = combined_df.groupby(["Product_Name", "Date"]).agg({"Sales_Value": "sum"}).reindex(full_index, fill_value=0).reset_index()
                 roll_base = roll_base.sort_values(by=["Product_Name", "Date"])
-
-                # Rolling average per product
                 roll_base["Rolling_Sales_Avg"] = roll_base.groupby("Product_Name")["Sales_Value"].transform(
                     lambda x: x.rolling(window=6, min_periods=1).mean()
                 )
 
-                roll_base["Month"] = roll_base["Date"].dt.strftime("%B %Y")
-                AgGrid(roll_base[["Product_Name", "Month", "Sales_Value", "Rolling_Sales_Avg"]].round(2))
+                # Show only the latest available value for each product
+                last_month = roll_base["Date"].max()
+                latest_rolling = roll_base[roll_base["Date"] == last_month][["Product_Name", "Rolling_Sales_Avg"]].round(2)
+                AgGrid(latest_rolling)
 
-                # 🔮 Forecast (Unchanged)
+                # 🔮 Forecast for All Products (Next Month)
                 st.subheader("🔮 Forecast for All Products (Next Month)")
                 history = combined_df.groupby(["Date", "Product_Name"]).agg({
                     "Quantity_Sold": "sum", "Sales_Value": "sum"

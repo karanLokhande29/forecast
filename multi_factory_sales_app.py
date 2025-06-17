@@ -44,9 +44,13 @@ for idx, unit in enumerate(tab_labels):
             else:
                 all_dates = sorted(dfs.keys())
                 combined_df = pd.concat([df.assign(Month=dt.strftime("%B %Y")) for dt, df in dfs.items()])
+                combined_df["Date"] = pd.to_datetime(combined_df["Date"])
+                combined_df = combined_df.sort_values(by=["Product_Name", "Date"])
+
                 month_options = [dt.strftime("%B %Y") for dt in all_dates]
                 selected_month = st.selectbox(f"Select Month - {unit}", month_options, index=len(month_options)-1, key=f"{unit}_month")
                 filtered_data = combined_df[combined_df["Month"] == selected_month]
+
                 product_filter = st.text_input(f"Search Product Name - {unit}", key=f"{unit}_filter")
                 if product_filter:
                     filtered_data = filtered_data[filtered_data["Product_Name"].str.contains(product_filter, case=False)]
@@ -60,7 +64,21 @@ for idx, unit in enumerate(tab_labels):
 
                 st.markdown(f"### 💰 Total Sales: ₹{filtered_data['Sales_Value'].sum():,.2f}")
 
-                # ✅ Product-wise 6-Month Rolling Sales Avg (Only latest value per product)
+                # 📆 Custom Month Range Summary
+                st.subheader("📆 Select Custom Month Range")
+                start_month = st.selectbox(f"From Month - {unit}", month_options, index=0, key=f"{unit}_start")
+                end_month = st.selectbox(f"To Month - {unit}", month_options, index=len(month_options)-1, key=f"{unit}_end")
+                try:
+                    start_date = pd.to_datetime(start_month)
+                    end_date = pd.to_datetime(end_month)
+                    range_df = combined_df[(combined_df["Date"] >= start_date) & (combined_df["Date"] <= end_date)]
+                    total_qty = range_df["Quantity_Sold"].sum()
+                    total_val = range_df["Sales_Value"].sum()
+                    st.success(f"📦 From {start_month} to {end_month}:\n\n🧮 Total Quantity: {total_qty:,.0f}\n💸 Total Sales: ₹{total_val:,.2f}")
+                except:
+                    st.warning("⚠️ Please select a valid month range.")
+
+                # ✅ Product-wise 6-Month Rolling Sales Avg (Latest value only)
                 st.subheader("📅 Product-wise 6-Month Rolling Sales Avg (Fixed)")
                 all_months = pd.date_range(start=combined_df["Date"].min(), end=combined_df["Date"].max(), freq="MS")
                 all_products = combined_df["Product_Name"].unique()
@@ -72,9 +90,9 @@ for idx, unit in enumerate(tab_labels):
                     lambda x: x.rolling(window=6, min_periods=1).mean()
                 )
 
-                # Show only the latest available value for each product
+                # Only show products with actual sales
                 last_month = roll_base["Date"].max()
-                latest_rolling = roll_base[roll_base["Date"] == last_month][["Product_Name", "Rolling_Sales_Avg"]].round(2)
+                latest_rolling = roll_base[(roll_base["Date"] == last_month) & (roll_base["Rolling_Sales_Avg"] > 0)][["Product_Name", "Rolling_Sales_Avg"]].round(2)
                 AgGrid(latest_rolling)
 
                 # 🔮 Forecast for All Products (Next Month)
